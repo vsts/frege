@@ -35,6 +35,11 @@
 
 package frege.runtime;
 
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.logging.Logger;
+import java.util.logging.Level;
+
 /**
  * <p> Base class for lazy values.</p>
  *
@@ -180,28 +185,46 @@ package frege.runtime;
  */
 public abstract class Delayed implements Lazy, Applicable {
 
-	private volatile Object item = null;
-	
+    private static final int MAX_WAIT = 50000;
+    private static final int TIME_WAIT = 10;
+
+    private volatile Object item = null;
+    private final AtomicBoolean locked = new AtomicBoolean(false);
+    private volatile long calculatingThread = -1;
+
+    private static final Logger logger = Logger.getLogger(Delayed.class.getName());
+
 	/* (non-Javadoc)
 	 * @see frege.runtime.Lazy#call()
 	 */
 	@Override
-	public final synchronized Object call() {
-		if (item != null) 
-			// value already computed
-			return item;
-		// Detect black holes
-		// When the same thread evaluates this while we are not yet done,
-		// it will return the black hole, and this will, in turn,
-		// give a Class Cast Exception later.
-		item = BlackHole.it;
-		Object o = eval();
-		while (o  instanceof Delayed) {
-			o = ((Delayed) o).eval();
-		}
-		item = o;
-		return o;
-	}
+    public final Object call() {
+        if (item == null) {
+            if (calculatingThread == Thread.currentThread().getId()) {
+                return BlackHole.it;
+            }
+            if (locked.compareAndSet(false, true)) {
+                calculatingThread = Thread.currentThread().getId();
+                Object o = eval();
+                while (o  instanceof Delayed) {
+                    o = ((Delayed) o).eval();
+                }
+                item = o;
+            } else {
+                for (int i = 0; i < MAX_WAIT && item == null; ++i) { /* wait activly */ }
+                while (item == null) {
+                    logger.log(Level.INFO, "Sleeping Thread: {0}", Thread.currentThread().getId());
+                    try {
+                        Thread.sleep(TIME_WAIT);
+                    } catch (InterruptedException e) {
+                        throw new RuntimeException(e);
+                    }
+                    for (int i = 0; i < MAX_WAIT && item == null; ++i) { /* wait activly */ }
+                }
+            }
+        }
+        return item;
+    }
 
 	/**
 	 * A shorthand for <code>((Applicable) x.call()).apply(arg)</code>

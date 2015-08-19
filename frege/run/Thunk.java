@@ -40,6 +40,10 @@ package frege.run;
 
 import frege.runtime.BlackHole;
 
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.logging.Logger;
+import java.util.logging.Level;
+
 /**
  * <p> A lazy value that can be shared and is updated with the evaluated value.</p>
  *
@@ -168,6 +172,11 @@ public class Thunk<R> implements Lazy<R> {
 	/* INVARIANT: exactly one of item and eval is null at any time */
 	private volatile Object item = null;
 	private Lazy<R> eval;
+
+    private static final int MAX_WAIT = 50000;
+    private static final int TIME_WAIT = 10;
+
+    private final AtomicBoolean locked = new AtomicBoolean(false);
 	
 	/**
 	 * <p> Create a thunk from a {@link Lazy} value. </p>
@@ -193,6 +202,8 @@ public class Thunk<R> implements Lazy<R> {
 			eval = null;
 		}
 	}
+
+    private static final Logger logger = Logger.getLogger(Thunk.class.getName());
 	
 	/** 
 	 * <p> evaluate the {@link Lazy}, and update this Thunk, unless it is already evaluated. </p>
@@ -200,28 +211,34 @@ public class Thunk<R> implements Lazy<R> {
 	 */
 	@SuppressWarnings("unchecked")
 	@Override
-	public final synchronized R call() {
-		if (item != null) 
-			// value already computed
-			return (R)item;
-		// Detect black holes
-		// When the same thread evaluates this while we are not yet done,
-		// it will return the black hole, and this will, in turn,
-		// give a Class Cast Exception later.
-		// Different threads will have to wait anyway due to the "synchronized".
-		// item = BlackHole.it;
-		Object o = eval.call();
-		Lazy<R>  t = null;
-		// algebraic datatypes are instances of Lazy, but their call() is the identity
-		// hence we know when to finish if either 
-		// * the result o is not Lazy 
-		// * or if it is the same reference as eval.
-		while (o  instanceof Lazy && (t = (Lazy<R>)o) != eval) {
-			eval = t;
-			o = eval.call();
-		}
-		item = o;
-		eval = null;	// make sure all the closed over things are not referenced anymore
+	public final R call() {
+		if (item == null) {
+            if (locked.compareAndSet(false, true)) {
+                Object o = eval.call();
+                Lazy<R>  t = null;
+                // algebraic datatypes are instances of Lazy, but their call() is the identity
+                // hence we know when to finish if either 
+                // * the result o is not Lazy 
+                // * or if it is the same reference as eval.
+                while (o  instanceof Lazy && (t = (Lazy<R>)o) != eval) {
+                    eval = t;
+                    o = eval.call();
+                }
+                item = o;
+                eval = null;	// make sure all the closed over things are not referenced anymore
+            } else {
+                for (int i = 0; i < MAX_WAIT && item == null; ++i) { /* wait activly */ }
+                while (item == null) {
+                    logger.log(Level.INFO, "Sleeping Thread: {0}", Thread.currentThread().getId());
+                    try {
+                        Thread.sleep(TIME_WAIT);
+                    } catch (InterruptedException e) {
+                        throw new RuntimeException(e);
+                    }
+                    for (int i = 0; i < MAX_WAIT && item == null; ++i) { /* wait activly */ }
+                }
+            }
+        }
 		return (R)item;
 	}
 
