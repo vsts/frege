@@ -41,6 +41,7 @@ package frege.run;
 import frege.runtime.BlackHole;
 
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.CountDownLatch;
 import java.util.logging.Logger;
 import java.util.logging.Level;
 
@@ -174,10 +175,12 @@ public class Thunk<R> implements Lazy<R> {
 	private Lazy<R> eval;
 
     private static final int MAX_WAIT = 50000;
-    private static final int TIME_WAIT = 10;
+    private static final Logger logger = Logger.getLogger(Thunk.class.getName());
 
     private final AtomicBoolean locked = new AtomicBoolean(false);
-	
+    private final CountDownLatch latch = new CountDownLatch(1);
+
+
 	/**
 	 * <p> Create a thunk from a {@link Lazy} value. </p>
 	 * <p> On evaluation via {@link Thunk#call}, this Thunk will be updated with
@@ -203,8 +206,6 @@ public class Thunk<R> implements Lazy<R> {
 		}
 	}
 
-    private static final Logger logger = Logger.getLogger(Thunk.class.getName());
-	
 	/** 
 	 * <p> evaluate the {@link Lazy}, and update this Thunk, unless it is already evaluated. </p>
 	 * @return the evaluated value 
@@ -226,16 +227,16 @@ public class Thunk<R> implements Lazy<R> {
                 }
                 item = o;
                 eval = null;	// make sure all the closed over things are not referenced anymore
+                latch.countDown();
             } else {
                 for (int i = 0; i < MAX_WAIT && item == null; ++i) { /* wait activly */ }
-                while (item == null) {
+                if (item == null) {
                     logger.log(Level.INFO, "Sleeping Thread: {0}", Thread.currentThread().getId());
                     try {
-                        Thread.sleep(TIME_WAIT);
+                        latch.await();
                     } catch (InterruptedException e) {
                         throw new RuntimeException(e);
                     }
-                    for (int i = 0; i < MAX_WAIT && item == null; ++i) { /* wait activly */ }
                 }
             }
         }

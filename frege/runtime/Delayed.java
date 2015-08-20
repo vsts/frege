@@ -36,7 +36,7 @@
 package frege.runtime;
 
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.CountDownLatch;
 import java.util.logging.Logger;
 import java.util.logging.Level;
 
@@ -185,15 +185,15 @@ import java.util.logging.Level;
  */
 public abstract class Delayed implements Lazy, Applicable {
 
-    private static final int MAX_WAIT = 50000;
-    private static final int TIME_WAIT = 10;
-
     private volatile Object item = null;
     private final AtomicBoolean locked = new AtomicBoolean(false);
+    private final CountDownLatch latch = new CountDownLatch(1);
     private volatile long calculatingThread = -1;
 
+    private static final int MAX_WAIT = 50000;
     private static final Logger logger = Logger.getLogger(Delayed.class.getName());
 
+ 	/* (
 	/* (non-Javadoc)
 	 * @see frege.runtime.Lazy#call()
 	 */
@@ -210,16 +210,16 @@ public abstract class Delayed implements Lazy, Applicable {
                     o = ((Delayed) o).eval();
                 }
                 item = o;
+                latch.countDown();
             } else {
                 for (int i = 0; i < MAX_WAIT && item == null; ++i) { /* wait activly */ }
-                while (item == null) {
+                if (item == null) {
                     logger.log(Level.INFO, "Sleeping Thread: {0}", Thread.currentThread().getId());
                     try {
-                        Thread.sleep(TIME_WAIT);
+                        latch.await();
                     } catch (InterruptedException e) {
                         throw new RuntimeException(e);
                     }
-                    for (int i = 0; i < MAX_WAIT && item == null; ++i) { /* wait activly */ }
                 }
             }
         }
