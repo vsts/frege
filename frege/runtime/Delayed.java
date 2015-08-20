@@ -190,7 +190,6 @@ public abstract class Delayed implements Lazy, Applicable {
     private final CountDownLatch latch = new CountDownLatch(1);
     private volatile long calculatingThread = -1;
 
-    private static final int MAX_WAIT = 50000;
     private static final Logger logger = Logger.getLogger(Delayed.class.getName());
 
  	/* (
@@ -212,14 +211,11 @@ public abstract class Delayed implements Lazy, Applicable {
                 item = o;
                 latch.countDown();
             } else {
-                for (int i = 0; i < MAX_WAIT && item == null; ++i) { /* wait activly */ }
-                if (item == null) {
-                    logger.log(Level.INFO, "Sleeping Thread: {0}", Thread.currentThread().getId());
-                    try {
-                        latch.await();
-                    } catch (InterruptedException e) {
-                        throw new RuntimeException(e);
-                    }
+                logger.log(Level.INFO, "Sleeping Thread: {0}", Thread.currentThread().getId());
+                try {
+                    latch.await();
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
                 }
             }
         }

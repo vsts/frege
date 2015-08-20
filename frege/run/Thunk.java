@@ -174,7 +174,6 @@ public class Thunk<R> implements Lazy<R> {
 	private volatile Object item = null;
 	private Lazy<R> eval;
 
-    private static final int MAX_WAIT = 50000;
     private static final Logger logger = Logger.getLogger(Thunk.class.getName());
 
     private final AtomicBoolean locked = new AtomicBoolean(false);
@@ -229,14 +228,11 @@ public class Thunk<R> implements Lazy<R> {
                 eval = null;	// make sure all the closed over things are not referenced anymore
                 latch.countDown();
             } else {
-                for (int i = 0; i < MAX_WAIT && item == null; ++i) { /* wait activly */ }
-                if (item == null) {
-                    logger.log(Level.INFO, "Sleeping Thread: {0}", Thread.currentThread().getId());
-                    try {
-                        latch.await();
-                    } catch (InterruptedException e) {
-                        throw new RuntimeException(e);
-                    }
+                logger.log(Level.INFO, "Sleeping Thread: {0}", Thread.currentThread().getId());
+                try {
+                    latch.await();
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
                 }
             }
         }
