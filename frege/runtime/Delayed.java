@@ -181,26 +181,31 @@ package frege.runtime;
 public abstract class Delayed implements Lazy, Applicable {
 
 	private volatile Object item = null;
+    private final Object itemLock = new Object();
 	
 	/* (non-Javadoc)
 	 * @see frege.runtime.Lazy#call()
 	 */
 	@Override
-	public final synchronized Object call() {
-		if (item != null) 
-			// value already computed
-			return item;
-		// Detect black holes
-		// When the same thread evaluates this while we are not yet done,
-		// it will return the black hole, and this will, in turn,
-		// give a Class Cast Exception later.
-		item = BlackHole.it;
-		Object o = eval();
-		while (o  instanceof Delayed) {
-			o = ((Delayed) o).eval();
-		}
-		item = o;
-		return o;
+	public final Object call() {
+        if (item != null && item != BlackHole.it)
+            return item;
+        synchronized (itemLock) {
+            if (item != null) 
+                // value already computed
+                return item;
+            // Detect black holes
+            // When the same thread evaluates this while we are not yet done,
+            // it will return the black hole, and this will, in turn,
+            // give a Class Cast Exception later.
+            item = BlackHole.it;
+            Object o = eval();
+            while (o  instanceof Delayed) {
+                o = ((Delayed) o).eval();
+            }
+            item = o;
+            return o;
+        }
 	}
 
 	/**
