@@ -202,11 +202,9 @@ public class Thunk<R> implements Lazy<R> {
 	@SuppressWarnings("unchecked")
 	@Override
 	public final R call() {
-        if (item != null) 
-            // value already computed
-            return (R)item;
         synchronized (itemLock) {
             if (item != null) 
+            // value already computed
                 return (R)item;
             // Detect black holes
             // When the same thread evaluates this while we are not yet done,

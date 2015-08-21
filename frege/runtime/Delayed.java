@@ -188,8 +188,6 @@ public abstract class Delayed implements Lazy, Applicable {
 	 */
 	@Override
 	public final Object call() {
-        if (item != null && item != BlackHole.it)
-            return item;
         synchronized (itemLock) {
             if (item != null) 
                 // value already computed
